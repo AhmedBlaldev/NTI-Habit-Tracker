@@ -16,12 +16,10 @@ router.get("/me", auth, async (req, res) => {
     res.status(200).json({ success: true, data: { user } });
   } catch (err) {
     console.error("Get user error:", err);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Something went wrong. Please try again later.",
-      });
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong. Please try again later.",
+    });
   }
 });
 
