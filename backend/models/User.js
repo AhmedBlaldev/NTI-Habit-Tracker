@@ -29,29 +29,45 @@ const userSchema = new mongoose.Schema(
       required: [true, "Password is required"],
       minlength: [8, "Password must be at least 8 characters"],
     },
+
+    resetPasswordToken: {
+      type: String,
+      default: null,
+    },
+    resetPasswordExpires: {
+      type: Date,
+      default: null,
+    },
+    passwordChangedAt: {
+      type: Date,
+      default: Date.now,
+    },
   },
   {
     timestamps: true,
-    indexes: [{ email: 1 }, { username: 1 }],
+    indexes: [{ email: 1 }, { username: 1 }, { resetPasswordToken: 1 }],
   }
 );
 
-userSchema.pre("save", async function (next) {
-  if (this.isNew) {
-    const existingEmail = await this.constructor.findOne({ email: this.email });
-    const existingUsername = await this.constructor.findOne({
-      username: this.username,
-    });
+userSchema.methods.createPasswordResetToken = function () {
+  const crypto = require("crypto");
+  const resetToken = crypto.randomBytes(32).toString("hex");
+  this.resetPasswordToken = crypto
+    .createHash("sha256")
+    .update(resetToken)
+    .digest("hex");
+  this.resetPasswordExpires = Date.now() + 30 * 60 * 1000; // 30 minutes
+  return resetToken;
+};
 
-    if (existingEmail) {
-      throw new Error("Email already exists");
-    }
-    if (existingUsername) {
-      throw new Error("Username already exists");
-    }
-  }
-  next();
-});
+userSchema.methods.isResetTokenValid = function (token) {
+  const crypto = require("crypto");
+  const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+  return (
+    this.resetPasswordToken === hashedToken &&
+    Date.now() < this.resetPasswordExpires
+  );
+};
 
 const User = mongoose.model("User", userSchema);
 
