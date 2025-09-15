@@ -385,4 +385,10 @@ const registerUser = async (req, res) => {
   }
 };
 
-module.exports = { registerUser, loginUser, forgetPassword, resetPassword, changePassword };
+module.exports = {
+  registerUser,
+  loginUser,
+  forgetPassword,
+  resetPassword,
+  changePassword,
+};
