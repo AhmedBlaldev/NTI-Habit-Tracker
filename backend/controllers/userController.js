@@ -6,13 +6,13 @@ const nodemailer = require("nodemailer");
 require("dotenv").config();
 
 const createEmailTransporter = async () => {
-  return transporter = nodemailer.createTransport({
-    service: 'gmail',
+  return (transporter = nodemailer.createTransport({
+    service: "gmail",
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS,
     },
-  });
+  }));
 };
 
 const forgetPassword = async (req, res) => {
@@ -50,7 +50,9 @@ const forgetPassword = async (req, res) => {
     console.log("Saving user...");
     await user.save({ validateBeforeSave: false });
 
-    const resetURL = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password/${resetToken}`;
+    const resetURL = `${
+      process.env.FRONTEND_URL || "http://localhost:3000"
+    }/reset-password/${resetToken}`;
 
     const emailOptions = {
       from: `"Support Team" <${process.env.EMAIL_USER}>`,
@@ -65,7 +67,8 @@ const forgetPassword = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: "If that email is registered, you will receive a password reset link"
+      message:
+        "If that email is registered, you will receive a password reset link",
     });
   } catch (error) {
     const foundUser = await User.findOne({ email: req.body.email });
