@@ -4,6 +4,7 @@ const {
   loginUser,
   forgetPassword,
   resetPassword,
+  changePassword,
 } = require("../controllers/userController");
 const auth = require("../middleware/auth");
 const User = require("../models/user");
@@ -12,9 +13,9 @@ const router = express.Router();
 
 router.post("/register", registerUser);
 router.post("/login", loginUser);
-
 router.post("/forgot-password", forgetPassword);
 router.post("/reset-password/:token", resetPassword);
+router.put("/change-password", auth, changePassword);
 
 router.get("/me", auth, async (req, res) => {
   try {
