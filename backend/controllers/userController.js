@@ -24,7 +24,7 @@ const VALIDATION_PATTERNS = {
 const SALT_ROUNDS = 10;
 
 const createEmailTransporter = () => {
-  return nodemailer.createTransporter({
+  return nodemailer.createTransport({
     service: "gmail",
     auth: {
       user: process.env.EMAIL_USER,
@@ -32,6 +32,7 @@ const createEmailTransporter = () => {
     },
   });
 };
+
 
 // Helper function to send emails
 const sendEmail = async (emailOptions) => {

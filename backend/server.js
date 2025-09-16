@@ -12,6 +12,10 @@ app.use(express.json());
 const userRoutes = require("./routes/userRoutes");
 app.use("/api/users", userRoutes);
 
+const habitRoutes = require("./routes/habitRoutes");
+app.use("/api/habits", habitRoutes);
+
+
 // Simple Route
 app.get("/", (req, res) => {
   res.send("API is running...");
