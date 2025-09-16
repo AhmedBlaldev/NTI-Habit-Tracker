@@ -1,4 +1,4 @@
-const User = require("../models/user");
+const User = require("../models/User");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
@@ -177,6 +177,7 @@ const resetPassword = async (req, res) => {
         message: "Passwords do not match",
       });
     }
+
     const passwordRegex =
       /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d@$!%*?&]{8,}$/;
     if (!passwordRegex.test(password)) {
@@ -186,12 +187,14 @@ const resetPassword = async (req, res) => {
           "Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, and one number",
       });
     }
+
     const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
 
     const user = await User.findOne({
       resetPasswordToken: hashedToken,
       resetPasswordExpires: { $gt: Date.now() },
     });
+
     if (!user) {
       return res.status(400).json({
         success: false,
@@ -250,54 +253,6 @@ const validationUsername = (username) => {
   return usernameRegex.test(username);
 };
 
-const loginUser = async (req, res) => {
-  try {
-    const { email, password } = req.body;
-
-    if (!email || !password) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Email and password are required" });
-    }
-
-    if (!validationEmail(email)) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Please enter a valid email" });
-    }
-
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Invalid email or password" });
-    }
-
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res
-        .status(401)
-        .json({ success: false, message: "Invalid email or password" });
-    }
-
-    const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: "1h" });
-
-    res.status(200).json({
-      success: true,
-      message: "Login successful",
-      data: {
-        user: { id: user._id, username: user.username, email },
-        token,
-      },
-    });
-  } catch (err) {
-    res.status(500).json({
-      success: false,
-      message: "Something went wrong. Please try again later.",
-    });
-  }
-};
-
 const registerUser = async (req, res) => {
   try {
     const { username, email, password } = req.body;
@@ -354,41 +309,235 @@ const registerUser = async (req, res) => {
       username,
       email,
       password: hashedPassword,
+      isEmailVerified: false,
     });
 
-    await user.save();
+    const verificationToken = user.createEmailVerificationToken();
+    await user.save({ validateBeforeSave: false });
 
-    const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: "1h" });
+    const verificationURL = `${
+      process.env.FRONTEND_URL || "http://localhost:3000"
+    }/verify-email/${verificationToken}`;
+    const emailOptions = {
+      from: `"Support Team" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: "Email Verification",
+      html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2>Hi ${username}! 🎉</h2>
+          <p>Thank you for signing up for Habit Tracker</p>
+          <p>To start using your account, you need to verify your email first:</p>
+          
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${verificationURL}" 
+               style="background-color: #4CAF50; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block;">
+              Verify Email ✅
+            </a>
+          </div>
+          
+          <p>Or copy this link into your browser:</p>
+          <p style="word-break: break-all; background-color: #f5f5f5; padding: 10px;">${verificationURL}</p>
+
+          <p><strong>Important:</strong> This link is only valid for 24 hours!</p>
+          <p>If you didn't sign up, please ignore this email.</p>
+        </div>
+        `,
+    };
+    const transporter = await createEmailTransporter();
+    await transporter.sendMail(emailOptions);
 
     res.status(201).json({
       success: true,
-      message: "User created successfully",
+      message: "User created successfully. Please verify your email.",
       data: {
-        user: { id: user._id, username, email },
+        id: user._id,
+        username,
+        email,
+        isEmailVerified: false,
       },
-      token,
     });
   } catch (err) {
-    if (err.code === 11000) {
-      const field = Object.keys(err.keyValue)[0];
-      return res.status(400).json({
-        success: false,
-        message: `User with this ${field} already exists`,
-      });
-    }
+    console.error("Error during user registration:", err);
     res.status(500).json({
       success: false,
       message: "Registration failed",
-      error: err.message,
     });
-    console.log("Error during user registration:", err);
   }
 };
 
+// إصلاح دالة verifyEmail
+const verifyEmail = async (req, res) => {
+  try {
+    const { token } = req.params;
+    if (!token) {
+      return res.status(400).json({
+        success: false,
+        message: "Verification token is required",
+      });
+    }
+    const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+    const user = await User.findOne({
+      emailVerificationToken: hashedToken,
+      emailVerificationExpires: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: "Token is invalid or has expired",
+      });
+    }
+
+    user.isEmailVerified = true;
+    user.emailVerificationToken = null;
+    user.emailVerificationExpires = null;
+
+    await user.save();
+
+    const jwtToken = jwt.sign({ id: user._id }, JWT_SECRET, {
+      expiresIn: "1h",
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Email successfully verified! Welcome 🎉",
+      data: {
+        user: {
+          id: user._id,
+          username: user.username,
+          email: user.email,
+          isEmailVerified: true,
+        },
+        token: jwtToken,
+      },
+    });
+  } catch (error) {
+    console.error("Email Verification Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong. Please try again later.",
+    });
+  }
+};
+
+const resetEmailVerification = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required",
+      });
+    }
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+    if (user.isEmailVerified) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is already verified",
+      });
+    }
+
+    const verificationToken = user.createEmailVerificationToken();
+    await user.save({ validateBeforeSave: false });
+
+    const verificationURL = `${
+      process.env.FRONTEND_URL || "http://localhost:3000"
+    }/verify-email/${verificationToken}`;
+    const emailOptions = {
+      from: `"Support Team" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: "Resend Verification Link",
+      html: `
+      <h2>Resend Verification Link</h2>
+      <p>Click the link below to verify your account:</p>
+      <a href="${verificationURL}">Verify Email</a>
+      <p>The link is valid for 24 hours.</p>
+      `,
+    };
+    const transporter = await createEmailTransporter();
+    await transporter.sendMail(emailOptions);
+
+    res.status(200).json({
+      success: true,
+      message: "Verification email resent. Please check your inbox.",
+    });
+  } catch (error) {
+    console.error("Resend Verification Email Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong. Please try again later.",
+    });
+  }
+};
+
+const loginUser = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Email and password are required",
+      });
+    }
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "Invalid email or password",
+      });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid email or password",
+      });
+    }
+    if (!user.isEmailVerified) {
+      return res.status(401).json({
+        success: false,
+        message: "Please verify your email before logging in",
+        needsEmailVerification: true,
+      });
+    }
+
+    const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: "1h" });
+
+    res.status(200).json({
+      success: true,
+      message: "Login successful",
+      data: {
+        user: {
+          id: user._id,
+          username: user.username,
+          email,
+          isEmailVerified: user.isEmailVerified,
+        },
+        token,
+      },
+    });
+  } catch (err) {
+    console.log("Login Error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong. Please try again later.",
+    });
+  }
+};
 module.exports = {
   registerUser,
   loginUser,
   forgetPassword,
   resetPassword,
   changePassword,
+  verifyEmail,
+  resetEmailVerification,
 };

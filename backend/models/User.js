@@ -30,6 +30,19 @@ const userSchema = new mongoose.Schema(
       minlength: [8, "Password must be at least 8 characters"],
     },
 
+    isEmailVerified: {
+      type: Boolean,
+      default: false,
+    },
+    emailVerificationToken: {
+      type: String,
+      default: null,
+    },
+    emailVerificationExpires: {
+      type: Date,
+      default: null,
+    },
+
     resetPasswordToken: {
       type: String,
       default: null,
@@ -48,6 +61,16 @@ const userSchema = new mongoose.Schema(
     indexes: [{ email: 1 }, { username: 1 }, { resetPasswordToken: 1 }],
   }
 );
+
+userSchema.methods.createEmailVerificationToken = function () {
+  const crypto = require("crypto");
+  const emailVerificationToken = crypto.randomBytes(32).toString("hex");
+
+  this.emailVerificationToken = crypto.createHash("sha256").update(emailVerificationToken).digest("hex");
+  this.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000;
+
+  return emailVerificationToken;
+};
 
 userSchema.methods.createPasswordResetToken = function () {
   const crypto = require("crypto");
