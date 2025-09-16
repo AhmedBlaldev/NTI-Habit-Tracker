@@ -3,7 +3,62 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
+const logger = require("../utils/logger");
 require("dotenv").config();
+
+// JWT Secret Configuration
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  logger.error("JWT_SECRET is not defined in environment variables");
+  process.exit(1);
+}
+
+// Validation Regex Constants
+const VALIDATION_PATTERNS = {
+  EMAIL: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+  PASSWORD: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d@$!%*?&]{8,}$/,
+  USERNAME: /^[a-zA-Z0-9_]{3,20}$/,
+};
+
+// Security Constants
+const SALT_ROUNDS = 10;
+
+const createEmailTransporter = () => {
+  return nodemailer.createTransporter({
+    service: "gmail",
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
+  });
+};
+
+// Helper function to send emails
+const sendEmail = async (emailOptions) => {
+  try {
+    const transporter = createEmailTransporter();
+    logger.info("Sending email", {
+      to: emailOptions.to,
+      subject: emailOptions.subject,
+    });
+
+    const info = await transporter.sendMail(emailOptions);
+
+    logger.info("Email sent successfully", {
+      messageId: info.messageId,
+      to: emailOptions.to,
+    });
+
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    logger.error("Email sending failed", {
+      error: error.message,
+      to: emailOptions.to,
+      subject: emailOptions.subject,
+    });
+    throw new Error("Failed to send email");
+  }
+};
 
 const changePassword = async (req, res) => {
   try {
@@ -59,18 +114,26 @@ const changePassword = async (req, res) => {
       });
     }
 
-    const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+    const hashedNewPassword = await bcrypt.hash(newPassword, SALT_ROUNDS);
 
     user.password = hashedNewPassword;
     user.passwordChangedAt = Date.now();
     await user.save({ validateBeforeSave: false });
+
+    logger.info("Password changed successfully", {
+      userId: req.user.id,
+    });
 
     res.status(200).json({
       success: true,
       message: "Password changed successfully",
     });
   } catch (error) {
-    console.error("Change Password Error:", error);
+    logger.error("Password change failed", {
+      error: error.message,
+      userId: req.user?.id,
+      stack: error.stack,
+    });
     res.status(500).json({
       success: false,
       message: "Something went wrong. Please try again later.",
@@ -78,20 +141,10 @@ const changePassword = async (req, res) => {
   }
 };
 
-const createEmailTransporter = async () => {
-  return (transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-  }));
-};
-
 const forgetPassword = async (req, res) => {
   try {
     const { email } = req.body;
-    console.log("Email received: ", email);
+    logger.info("Password reset request received", { email });
 
     if (!email) {
       return res.status(400).json({
@@ -100,17 +153,18 @@ const forgetPassword = async (req, res) => {
       });
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
+    if (!VALIDATION_PATTERNS.EMAIL.test(email)) {
+      logger.warn("Invalid email format in password reset", { email });
       return res.status(400).json({
         success: false,
         message: "Please enter a valid email",
       });
     }
 
-    console.log("Looking for user...");
+    logger.debug("Searching for user in database", { email });
     const user = await User.findOne({ email });
     if (!user) {
+      logger.info("Password reset requested for non-existent user", { email });
       return res.status(200).json({
         success: true,
         message:
@@ -118,9 +172,10 @@ const forgetPassword = async (req, res) => {
       });
     }
 
-    console.log("Creating reset token...");
+    logger.debug("Creating password reset token", { userId: user._id });
     const resetToken = user.createPasswordResetToken();
-    console.log("Saving user...");
+
+    logger.debug("Saving user with reset token", { userId: user._id });
     await user.save({ validateBeforeSave: false });
 
     const resetURL = `${
@@ -133,10 +188,8 @@ const forgetPassword = async (req, res) => {
       subject: "Password Reset Request",
       text: `You requested a password reset. Click the link to reset your password: ${resetURL}. If you did not request this, please ignore this email.`,
     };
-    const transporter = await createEmailTransporter();
-    console.log("📤 Sending email via Gmail...");
-    const info = await transporter.sendMail(emailOptions);
-    console.log("✅ Email sent! Message ID:", info.messageId);
+
+    await sendEmail(emailOptions);
 
     res.status(200).json({
       success: true,
@@ -151,7 +204,11 @@ const forgetPassword = async (req, res) => {
       await foundUser.save({ validateBeforeSave: false });
     }
 
-    console.error("Forget Password Error:", error);
+    logger.error("Password reset request failed", {
+      error: error.message,
+      email: req.body.email,
+      stack: error.stack,
+    });
     res.status(500).json({
       success: false,
       message: "Something went wrong. Please try again later.",
@@ -178,9 +235,7 @@ const resetPassword = async (req, res) => {
       });
     }
 
-    const passwordRegex =
-      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d@$!%*?&]{8,}$/;
-    if (!passwordRegex.test(password)) {
+    if (!VALIDATION_PATTERNS.PASSWORD.test(password)) {
       return res.status(400).json({
         success: false,
         message:
@@ -201,8 +256,9 @@ const resetPassword = async (req, res) => {
         message: "Token is invalid or has expired",
       });
     }
-    const encryptedPassword = 10;
-    const hashedPassword = await bcrypt.hash(password, encryptedPassword);
+
+    const saltRounds = SALT_ROUNDS;
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
 
     user.password = hashedPassword;
     user.resetPasswordToken = null;
@@ -215,6 +271,11 @@ const resetPassword = async (req, res) => {
       expiresIn: "1h",
     });
 
+    logger.info("Password reset completed successfully", {
+      userId: user._id,
+      email: user.email,
+    });
+
     res.status(200).json({
       success: true,
       message: "Password has been reset successfully",
@@ -224,7 +285,11 @@ const resetPassword = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Reset Password Error:", error);
+    logger.error("Password reset failed", {
+      error: error.message,
+      token: req.params.token,
+      stack: error.stack,
+    });
     res.status(500).json({
       success: false,
       message: "Something went wrong. Please try again later.",
@@ -232,25 +297,17 @@ const resetPassword = async (req, res) => {
   }
 };
 
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) {
-  console.error("JWT_SECRET is not defined in environment variables");
-}
-
 // Validation Functions
 const validationEmail = (email) => {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return emailRegex.test(email);
+  return VALIDATION_PATTERNS.EMAIL.test(email);
 };
 
 const validationPassword = (password) => {
-  const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d@$!%*?&]{8,}$/;
-  return passwordRegex.test(password);
+  return VALIDATION_PATTERNS.PASSWORD.test(password);
 };
 
 const validationUsername = (username) => {
-  const usernameRegex = /^[a-zA-Z0-9_]{3,20}$/;
-  return usernameRegex.test(username);
+  return VALIDATION_PATTERNS.USERNAME.test(username);
 };
 
 const registerUser = async (req, res) => {
@@ -268,7 +325,7 @@ const registerUser = async (req, res) => {
       return res.status(400).json({
         success: false,
         message:
-          "Username must be 3-30 characters long and can only contain letters, numbers, and underscores",
+          "Username must be 3-20 characters long and can only contain letters, numbers, and underscores",
       });
     }
 
@@ -303,8 +360,8 @@ const registerUser = async (req, res) => {
       });
     }
 
-    const encryptedPassword = 10;
-    const hashedPassword = await bcrypt.hash(password, encryptedPassword);
+    const saltRounds = SALT_ROUNDS;
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
     const user = new User({
       username,
       email,
@@ -343,8 +400,8 @@ const registerUser = async (req, res) => {
         </div>
         `,
     };
-    const transporter = await createEmailTransporter();
-    await transporter.sendMail(emailOptions);
+
+    await sendEmail(emailOptions);
 
     res.status(201).json({
       success: true,
@@ -357,7 +414,12 @@ const registerUser = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error("Error during user registration:", err);
+    logger.error("User registration failed", {
+      error: err.message,
+      email: req.body.email,
+      username: req.body.username,
+      stack: err.stack,
+    });
     res.status(500).json({
       success: false,
       message: "Registration failed",
@@ -398,6 +460,11 @@ const verifyEmail = async (req, res) => {
       expiresIn: "1h",
     });
 
+    logger.info("Email verification completed successfully", {
+      userId: user._id,
+      email: user.email,
+    });
+
     res.status(200).json({
       success: true,
       message: "Email successfully verified! Welcome 🎉",
@@ -412,7 +479,11 @@ const verifyEmail = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Email Verification Error:", error);
+    logger.error("Email verification failed", {
+      error: error.message,
+      token: req.params.token,
+      stack: error.stack,
+    });
     res.status(500).json({
       success: false,
       message: "Something went wrong. Please try again later.",
@@ -460,15 +531,19 @@ const resetEmailVerification = async (req, res) => {
       <p>The link is valid for 24 hours.</p>
       `,
     };
-    const transporter = await createEmailTransporter();
-    await transporter.sendMail(emailOptions);
+
+    await sendEmail(emailOptions);
 
     res.status(200).json({
       success: true,
       message: "Verification email resent. Please check your inbox.",
     });
   } catch (error) {
-    console.error("Resend Verification Email Error:", error);
+    logger.error("Resend verification email failed", {
+      error: error.message,
+      email: req.body.email,
+      stack: error.stack,
+    });
     res.status(500).json({
       success: false,
       message: "Something went wrong. Please try again later.",
@@ -511,6 +586,11 @@ const loginUser = async (req, res) => {
 
     const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: "1h" });
 
+    logger.info("User login successful", {
+      userId: user._id,
+      email: email,
+    });
+
     res.status(200).json({
       success: true,
       message: "Login successful",
@@ -525,7 +605,11 @@ const loginUser = async (req, res) => {
       },
     });
   } catch (err) {
-    console.log("Login Error:", err);
+    logger.error("User login failed", {
+      error: err.message,
+      email: req.body.email,
+      stack: err.stack,
+    });
     res.status(500).json({
       success: false,
       message: "Something went wrong. Please try again later.",
