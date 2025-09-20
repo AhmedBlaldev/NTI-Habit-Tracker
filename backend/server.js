@@ -6,7 +6,10 @@ const cors = require("cors");
 dotenv.config({ path: __dirname + "/.env" });
 const app = express();
 
-app.use(cors());
+app.use(cors({
+  origin: 'http://localhost:4200',
+  credentials: true
+}));
 app.use(express.json());
 
 const userRoutes = require("./routes/userRoutes");
@@ -25,7 +28,7 @@ app.get("/", (req, res) => {
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => console.log("✅ MongoDB connected"))
-  .catch((err) => console.error(err));
+  .catch((err) => console.error('MongoDB connection error:', err));
 
 // Start server
 const PORT = process.env.PORT || 5000;

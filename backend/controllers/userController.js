@@ -33,7 +33,6 @@ const createEmailTransporter = () => {
   });
 };
 
-
 // Helper function to send emails
 const sendEmail = async (emailOptions) => {
   try {
@@ -180,14 +179,20 @@ const forgetPassword = async (req, res) => {
     await user.save({ validateBeforeSave: false });
 
     const resetURL = `${
-      process.env.FRONTEND_URL || "http://localhost:3000"
-    }/reset-password/${resetToken}`;
+      process.env.FRONTEND_URL || "http://localhost:4200"
+    }/auth/reset-password/${resetToken}`;
 
     const emailOptions = {
       from: `"Support Team" <${process.env.EMAIL_USER}>`,
       to: email,
       subject: "Password Reset Request",
-      text: `You requested a password reset. Click the link to reset your password: ${resetURL}. If you did not request this, please ignore this email.`,
+      html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2>Password Reset Request</h2>
+          <p>We received a request to reset your password. Click the link below to set a new password:</p>
+          <a href="${resetURL}" style="display: inline-block; margin: 20px 0; padding: 12px 20px; background: #007bff; color: #fff; text-decoration: none; border-radius: 5px;">Reset Password</a>
+          <p>If you did not request this, please ignore this email.</p>
+      </div>`,
     };
 
     await sendEmail(emailOptions);
@@ -374,8 +379,9 @@ const registerUser = async (req, res) => {
     await user.save({ validateBeforeSave: false });
 
     const verificationURL = `${
-      process.env.FRONTEND_URL || "http://localhost:3000"
+      process.env.FRONTEND_URL || "http://localhost:4200"
     }/verify-email/${verificationToken}`;
+
     const emailOptions = {
       from: `"Support Team" <${process.env.EMAIL_USER}>`,
       to: email,
@@ -519,7 +525,7 @@ const resetEmailVerification = async (req, res) => {
     await user.save({ validateBeforeSave: false });
 
     const verificationURL = `${
-      process.env.FRONTEND_URL || "http://localhost:3000"
+      process.env.FRONTEND_URL || "http://localhost:4200"
     }/verify-email/${verificationToken}`;
     const emailOptions = {
       from: `"Support Team" <${process.env.EMAIL_USER}>`,
