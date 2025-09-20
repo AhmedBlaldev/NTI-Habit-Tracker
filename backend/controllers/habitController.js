@@ -243,6 +243,37 @@ const trackProgress = async (req, res) => {
     return res.status(500).json({ success: false, message: 'Something went wrong' });
   }
 };
+const getHabitById = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const habitId = req.params.id;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    const habit = await Habit.findOne({ _id: habitId, user: userId });
+    
+    if (!habit) {
+      return res.status(404).json({ success: false, message: 'Habit not found' });
+    }
+
+    return res.status(200).json({ 
+      success: true, 
+      data: habit 
+    });
+  } catch (error) {
+    logger.error('Get habit by ID failed', { 
+      error: error.message, 
+      stack: error.stack, 
+      userId: req.user?.id 
+    });
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Something went wrong. Please try again later.' 
+    });
+  }
+};
 
 
 
@@ -257,4 +288,5 @@ module.exports = {
   deleteHabit,
   deleteAllHabits,
   trackProgress,
+  getHabitById,
 };

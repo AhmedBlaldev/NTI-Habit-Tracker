@@ -1,5 +1,5 @@
 const express = require('express');
-const { createHabit, getUserHabits ,updateHabit, deleteHabit ,deleteAllHabits,trackProgress} = require('../controllers/habitController');
+const { createHabit, getUserHabits ,updateHabit, deleteHabit ,deleteAllHabits,trackProgress,getHabitById} = require('../controllers/habitController');
 const auth = require('../middleware/auth');
 
 const router = express.Router();
@@ -23,7 +23,8 @@ router.delete('/all', auth, deleteAllHabits);
 router.put('/:habitId/progress', auth, trackProgress);
 
 
-
+// Get specific habit by ID (protected)
+router.get('/:id', auth, getHabitById);
 
 
 
