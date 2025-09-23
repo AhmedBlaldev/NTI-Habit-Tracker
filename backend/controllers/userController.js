@@ -8,6 +8,8 @@ require("dotenv").config();
 
 // JWT Secret Configuration
 const JWT_SECRET = process.env.JWT_SECRET;
+// JWT Expiry Configuration (fallback to 7 days if not provided)
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
 if (!JWT_SECRET) {
   logger.error("JWT_SECRET is not defined in environment variables");
   process.exit(1);
@@ -274,7 +276,7 @@ const resetPassword = async (req, res) => {
     await user.save();
 
     const jwtToken = jwt.sign({ id: user._id }, JWT_SECRET, {
-      expiresIn: "1h",
+      expiresIn: JWT_EXPIRES_IN,
     });
 
     logger.info("Password reset completed successfully", {
@@ -434,7 +436,6 @@ const registerUser = async (req, res) => {
   }
 };
 
-// إصلاح دالة verifyEmail
 const verifyEmail = async (req, res) => {
   try {
     const { token } = req.params;
@@ -464,7 +465,7 @@ const verifyEmail = async (req, res) => {
     await user.save();
 
     const jwtToken = jwt.sign({ id: user._id }, JWT_SECRET, {
-      expiresIn: "1h",
+      expiresIn: JWT_EXPIRES_IN,
     });
 
     logger.info("Email verification completed successfully", {
@@ -591,7 +592,7 @@ const loginUser = async (req, res) => {
       });
     }
 
-    const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: "1h" });
+  const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 
     logger.info("User login successful", {
       userId: user._id,
