@@ -16,6 +16,19 @@ module.exports = async (req, res, next) => {
     if (!user) {
       return res.status(401).json({ message: "User not found" });
     }
+
+    // Invalidate tokens issued before last password change/reset
+    const tokenIssuedAtMs = decoded.iat ? decoded.iat * 1000 : null;
+    if (
+      tokenIssuedAtMs &&
+      user.passwordChangedAt &&
+      new Date(user.passwordChangedAt).getTime() > tokenIssuedAtMs
+    ) {
+      return res.status(401).json({
+        message: "Your password was changed recently. Please log in again.",
+        tokenInvalidated: true,
+      });
+    }
     if (!user.isEmailVerified) {
       return res.status(401).json({
         message: "Email not Verified, Please verify your email to proceed",
