@@ -167,10 +167,10 @@ const forgetPassword = async (req, res) => {
     const user = await User.findOne({ email });
     if (!user) {
       logger.info("Password reset requested for non-existent user", { email });
-      return res.status(200).json({
-        success: true,
-        message:
-          "If that email is registered, you will receive a password reset link",
+      return res.status(404).json({
+        success: false,
+        message: "Account not found. You haven't registered yet. Please create an account.",
+        accountNotFound: true,
       });
     }
 
@@ -410,11 +410,24 @@ const registerUser = async (req, res) => {
         `,
     };
 
-    await sendEmail(emailOptions);
+    let emailSent = false;
+    try {
+      const sendRes = await sendEmail(emailOptions);
+      emailSent = !!sendRes?.success;
+    } catch (e) {
+      logger.error("Verification email send failed", {
+        error: e.message,
+        email,
+      });
+      // Do not throw here to avoid failing registration if email fails
+    }
 
     res.status(201).json({
       success: true,
-      message: "User created successfully. Please verify your email.",
+      message: emailSent
+        ? "User created successfully. Please verify your email."
+        : "User created successfully, but we couldn't send the verification email. Please use resend verification.",
+      emailSent,
       data: {
         id: user._id,
         username,
@@ -573,7 +586,8 @@ const loginUser = async (req, res) => {
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "Invalid email or password",
+        message: "Account not found. You haven't registered yet. Please create an account.",
+        accountNotFound: true,
       });
     }
 
