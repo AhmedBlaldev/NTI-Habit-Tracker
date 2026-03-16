@@ -21,11 +21,11 @@ router.get("/", auth, getUserHabits);
 // Update habit (protected)
 router.put("/:id", auth, updateHabit);
 
+// Delete all habits (protected) — must be before /:id to avoid "all" being treated as an ID
+router.delete("/all", auth, deleteAllHabits);
+
 // Delete habit (protected)
 router.delete("/:id", auth, deleteHabit);
-
-// Delete all habits (protected)
-router.delete("/all", auth, deleteAllHabits);
 
 //for the habbit progress
 router.put("/:habitId/progress", auth, trackProgress);

@@ -475,7 +475,7 @@ const verifyEmail = async (req, res) => {
     user.emailVerificationToken = null;
     user.emailVerificationExpires = null;
 
-    await user.save();
+    await user.save({ validateBeforeSave: false });
 
     const jwtToken = jwt.sign({ id: user._id }, JWT_SECRET, {
       expiresIn: JWT_EXPIRES_IN,

@@ -296,34 +296,59 @@ const deleteAllHabits = async (req, res) => {
 
 const trackProgress = async (req, res) => {
   try {
+    const userId = req.user?.id;
     const { habitId } = req.params;
     const { date, done, note } = req.body;
 
-    const habit = await Habit.findById(habitId);
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const habit = await Habit.findOne({ _id: habitId, user: userId });
     if (!habit) {
       return res
         .status(404)
         .json({ success: false, message: "Habit not found" });
     }
 
-    const progressDate = new Date(date).toISOString().split("T")[0];
+    // Normalize to date-only string (YYYY-MM-DD) for comparison
+    // If the client sends a YYYY-MM-DD string, use it directly;
+    // otherwise extract from the Date object
+    const dateInput = String(date);
+    const progressDate = dateInput.match(/^\d{4}-\d{2}-\d{2}$/)
+      ? dateInput
+      : new Date(date).toISOString().split("T")[0];
 
-    // Check if already exists for that day
-    const existingProgress = habit.progress.find(
-      (p) => new Date(p.date).toISOString().split("T")[0] === progressDate
-    );
+    // Helper to check if a stored progress entry matches the target date
+    const matchesDate = (p) => {
+      const storedDate = new Date(p.date);
+      // Compare using local date parts to handle timezone offsets
+      const storedStr = storedDate.getFullYear() + '-' +
+        String(storedDate.getMonth() + 1).padStart(2, '0') + '-' +
+        String(storedDate.getDate()).padStart(2, '0');
+      // Also check UTC date string for entries stored in UTC
+      const storedUTC = storedDate.toISOString().split("T")[0];
+      return storedStr === progressDate || storedUTC === progressDate;
+    };
 
-    if (existingProgress) {
-      existingProgress.done = done;
-      existingProgress.note = note || "";
+    if (done === false) {
+      // Undo: remove ALL progress entries that match this date
+      habit.progress = habit.progress.filter((p) => !matchesDate(p));
     } else {
-      habit.progress.push({ date: new Date(date), done, note: note || "" });
+      // Mark as done: remove any existing entries for the date first, then add fresh
+      habit.progress = habit.progress.filter((p) => !matchesDate(p));
+      habit.progress.push({ date: new Date(progressDate + "T12:00:00"), done: true, note: note || "" });
     }
 
     await habit.save();
 
-    return res.status(200).json({ success: true, data: habit.progress });
+    return res.status(200).json({ success: true, data: habit });
   } catch (err) {
+    logger.error("Track progress failed", {
+      error: err.message,
+      stack: err.stack,
+      userId: req.user?.id,
+    });
     return res
       .status(500)
       .json({ success: false, message: "Something went wrong" });
